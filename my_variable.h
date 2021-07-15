@@ -42,7 +42,7 @@ String values = "";
 
 #define dhtpin 17
 #define PUMP 12
-#define servoPin  19
+#define servoPin  14
 #define BUTTON_WATER 27
 #define BUTTON_PUMP 26
 #define BUTTON_IS_AUTO 25
