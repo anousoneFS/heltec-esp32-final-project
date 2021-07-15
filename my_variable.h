@@ -3,6 +3,7 @@
 #include <IOXhop_FirebaseESP32.h>
 #include <ESP32Servo.h>
 #include "Wire.h"
+#include "DHT.h"
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
@@ -19,6 +20,7 @@ String time_fish = "6:00";
 String formattedDate;
 String dayStamp;
 String timeStamp;
+String my_date_format;
 
 
 unsigned short counter = 1;
@@ -39,10 +41,19 @@ String values = "";
 #define FIREBASE_HOST "project-x-23d73-default-rtdb.firebaseio.com/"
 #define FIREBASE_AUTH "2IuejmsdoYAX3vxR78PIocqgilsAQkHUXCj9gomD"
 
+float temperature = 15;
+float humidity = 45;
+int light = 100;
+float rawRange = 4096;
+float logRange = 5.0;
 
-#define dhtpin 17
+#define DHTPIN 17
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+#define LIGHT_PIN 36
 #define PUMP 12
-#define servoPin  14
+#define servoPin 14
 #define BUTTON_WATER 27
 #define BUTTON_PUMP 26
 #define BUTTON_IS_AUTO 25
@@ -69,4 +80,6 @@ void setup_variable(){
   pinMode(BUTTON_PUMP, INPUT);
   pinMode(BUTTON_IS_AUTO, INPUT);
   pinMode(BUTTON_SERVO, INPUT);
+  pinMode(LIGHT_PIN, INPUT);
+  
 }
