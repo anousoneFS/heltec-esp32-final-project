@@ -6,9 +6,13 @@
 #include "firebase_method.h"
 //#include "ntp_server.h"
 
-
 void setup()
 {
+  myservo.setPeriodHertz(50);    // standard 50 hz servo
+  myservo.attach(SERVO_PIN); // attaches the servo on pin 18 to the servo object
+  myservo.write(pos);
+  delay(100);
+
   setup_variable();
   Heltec.begin(true /*DisplayEnable Enable*/, false /*LoRa Enable*/, true /*Serial Enable*/);
 
@@ -18,60 +22,30 @@ void setup()
   Heltec.display->clear();
   WIFISetUp();
   delay(3000);
-  
-//  timeClient.begin();
-  // Set offset time in seconds to adjust for your timezone, for example:
-  // GMT +1 = 3600
-  // GMT +8 = 28800
-  // GMT -1 = -3600
-  // GMT 0 = 0
-//  timeClient.setTimeOffset(25200);
-
   firebase_streaming();
+  initial_data_from_firebase();
+  dht.begin();
+  get_time();
+  read_sensor();
 }
 
-String get_time(){
-  while(!timeClient.update()) {
-    timeClient.forceUpdate();
+void control_servo() {
+  for (pos = 90; pos >= 30; pos -= 1) { // goes from 180 degrees to 0 degrees
+    myservo.write(pos);    // tell servo to go to position in variable 'pos'
+    delay(10);             // waits 15ms for the servo to reach the position
   }
-  // The formattedDate comes with the following format:
-  // 2018-05-28T16:00:13Z
-  // We need to extract date and time
-  formattedDate = timeClient.getFormattedDate();
-//  Serial.println(formattedDate);
 
-  // Extract date
-  int splitT = formattedDate.indexOf("T");
-  dayStamp = formattedDate.substring(0, splitT);
-//  Serial.print("DATE: ");
-//  Serial.println(dayStamp);
-  // Extract time
-  timeStamp = formattedDate.substring(splitT+1, formattedDate.length()-1);
-  Serial.print("HOUR: ");
-  Serial.println(timeStamp);
-  delay(1000);
-  time_fish = formattedDate.substring(splitT+1, formattedDate.length() - 4);
-  return timeStamp;
+  for (pos = 30; pos <= 90; pos += 1) { // goes from 0 degrees to 180 degrees
+    // in steps of 1 degree
+    myservo.write(pos);    // tell servo to go to position in variable 'pos'
+    delay(10);             // waits 15ms for the servo to reach the position
+  }
 }
 
 void loop()
 {
 
-  Heltec.display -> clear();
-  Heltec.display -> drawString(0, 20, "Hour : ");
-  Heltec.display -> drawString(50, 20, get_time());
-  Heltec.display -> display();
-  //  counter++;
-
-  Serial.print("btn is auto = ");
-  Serial.println(digitalRead(BUTTON_IS_AUTO));
-  Serial.print("btn pump = ");
-  Serial.println(digitalRead(BUTTON_PUMP));
-  Serial.print("btn servo = ");
-  Serial.println(digitalRead(BUTTON_SERVO));
-  Serial.print("time fish = ");
-  Serial.println(time_fish);
-  delay(200);
+  display_sensor_value();
 
   // ---------- button auto on/off  ----------
   btn_is_auto_status = digitalRead(BUTTON_IS_AUTO);
@@ -134,62 +108,89 @@ void loop()
       // end control pump from button
 
     }
-
-    delay(200);
     Serial.println("in mode manual");
   }
 
+  //   send every 10 min 600000
+  if (millis() - previousMil > 120000) {
+    // put package
+    Firebase.setString("data_sensor_from_arduino/data_from_arduino", String(read_sensor()));
+    // handle error
+    if (Firebase.failed()) {
+      Serial.print("firebase.setString failded!!!");
+      Serial.println(Firebase.error());
+      return;
+    }
+    previousMil = millis();
+  }
 
-  // => Read dht sensor data
-  //  delay(5000);
-  //  Serial.println ("run in main loop");
+}
 
-  // send every 10 min
-  //  if (millis() - previousMil > 600000) {
-  //    previousMil = millis();
-  //    float h;
-  //    float t;
-  //    do  {
-  //      delay(100);
-  //      h = dht.readHumidity();
-  //      t = dht.readTemperature();
-  //      delay(2100);
-  //
-  //      // Check if any reads faiPUMP and exit early (to try again).
-  //      if (isnan(h) || isnan(t)) {
-  //        Serial.println(F("FaiPUMP to read from DHT sensor!"));
-  //      } else {
-  //        Serial.print(F("Humidity: "));
-  //        Serial.print(h);
-  //        Serial.print(F("%  Temperature: "));
-  //        Serial.print(t);
-  //        Serial.println("");
-  //        // set package data
-  //        values = "";
-  //        values += "{\"time\":";
-  //        values += "\"";
-  //        values += String(previousMil);
-  //        values +=  "\",\"temp\":";
-  //        values +=  "\"";
-  //        values += String(t);
-  //        values += ",\"humid\":";
-  //        values += "\"";
-  //        values += String(h);
-  //        values += "\"}";
-  //        // put package
-  //        Firebase.setString("sensor-values/20-5-2021/" + String(n), values);
-  //        // handle error
-  //        if (Firebase.faiPUMP()) {
-  //          Serial.print("setting /number faiPUMP:");
-  //          Serial.println(Firebase.error());
-  //          return;
-  //        }
-  //      }
-  //    } while (isnan(h) || isnan(t));
-  //
-  //    n++;
-  //    Serial.println(n);
-  //  }
+// end void loop ------------------
 
+void firebase_streaming() {
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+
+  Firebase.stream("arduino_streaming/", [](FirebaseStream stream) {
+    Serial.println("Evant: " + stream.getEvent());
+    Serial.println("Path: " + stream.getPath());
+    Serial.println("Data: " + stream.getDataString());
+    Serial.println(stream.getDataInt());
+    if (stream.getEvent() == "put") {
+      if (stream.getPath() == "/") {
+
+        if (stream.getDataInt() < 2) {
+          //            Serial.println("success leo");
+          if (stream.getDataInt() && previous == 0) {
+            if (!isAutoFire) {
+              control_servo();
+            }
+          }
+          previous = stream.getDataInt();
+        } else {
+          switch (stream.getDataInt()) {
+            case 2:
+              if (!isAutoFire) {
+                //                  Serial.println("PUMP off");
+                digitalWrite(PUMP, LOW);
+              }
+              break;
+            case 3:
+              if (!isAutoFire) {
+                //                  Serial.println("PUMP on");
+                digitalWrite(PUMP, HIGH);
+              }
+              break;
+            case 4:
+              if (btn_is_auto_status) {
+                isAutoFire = false;
+              } else {
+                isAutoFire = true;
+              }
+
+              break;
+            case 5:
+              if (btn_is_auto_status) {
+                isAutoFire = true;
+              } else {
+                isAutoFire = true;
+              }
+              break;
+            case 6:
+              initial_data_from_firebase();
+              break;
+            case 7:
+              break;
+
+            default:
+              timeSubtract = stream.getDataInt();
+              Serial.print("timeSubtract = ");
+              Serial.println(timeSubtract);
+          }
+        }
+
+      }
+    }
+  });
 
 }

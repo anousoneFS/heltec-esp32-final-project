@@ -45,7 +45,8 @@ void WIFISetUp(void)
   }
   Heltec.display -> drawString(0, 10, "WIFI Setup done");
   Heltec.display -> display();
-  delay(500);
+  delay(2000);
+  Heltec.display -> clear();
 }
 
 void WIFIScan(void)
